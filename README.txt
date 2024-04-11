@@ -1,4 +1,4 @@
-#Weather bot
+# Weather bot
 Инструкция по запуску в режиме разработки:
 
 Python версия 3.11 и PyCharm в качестве IDE.
