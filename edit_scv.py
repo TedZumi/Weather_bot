@@ -7,7 +7,7 @@ import numpy as np
 import WeatherBD as bd
 
 import teleg_bot as tb
-
+import re
 
 
 def group_time():
@@ -16,8 +16,6 @@ def group_time():
     data['Time'] = pd.to_datetime(data['Time']).dt.hour
 
     data['Period'] = pd.cut(data['Time'], bins=[0, 6, 12, 18, 24], labels=['Ночь', 'Утро', 'День', 'Вечер'])
-
-
 
     grouped_data = data.groupby(['Date', 'Period'], observed=False).agg(
         {'T': 'mean', 'U': 'mean', 'WW': lambda x: x.mode().iloc[0]}).round(1)
@@ -117,7 +115,7 @@ def train(city, period):
     print("-" * 48)
 
 
-def predict_weather(bot, chat_id, data):
+def predict_weather(bot, chat_id, data, time_of_day):
     weather_data = joblib.load('city_union_temp.pkl')
     weather_weath = joblib.load('city_union_weath.pkl')
     time_of_day_dict = {
@@ -128,21 +126,17 @@ def predict_weather(bot, chat_id, data):
     }
 
     city = ''
-    date = ''
-
 
     if data['Город'] == 'Москва':
         city = 'Moscow'
     elif data['Город'] == 'Нижний Новгород':
         city = 'N_Novgorod'
 
-    print(data)
-    if data['Дата'] != None:
-        date_parts = data['Дата'].split('.')
-        day = date_parts[1] + date_parts[0]
 
-    print(city)
-    print(date)
+    date_parts = re.findall(r'\d+', data['Дата'])
+
+    day = date_parts[1] + date_parts[0]
+    print(day)
 
 
     date = [
@@ -150,6 +144,7 @@ def predict_weather(bot, chat_id, data):
          (str(int(day) + 1)),
          (day)]
     ]
+
 
     temp_values = []
     weath_values = []
@@ -170,20 +165,38 @@ def predict_weather(bot, chat_id, data):
     temp_v=[]
     weat_v=[]
     if temp_values and weath_values:
-        for i, time_of_day in enumerate(["Morning", "Day", "Evening", "Night"]):
-            temp_model = joblib.load(temp_values[i])
+        if time_of_day is None:
+            for i, time_of_day in enumerate(["Morning", "Day", "Evening", "Night"]):
+                temp_model = joblib.load(temp_values[i])
+                temp = temp_model.predict(date)[0]
+
+                weath_model = joblib.load(weath_values[i])
+                weath = weath_model.predict(date)[0]
+                weather_text = convert_weather(weath)
+
+                #print(f"{time_of_day} temperature prediction: {temp}°C weather prediction: {weather_text} ")
+                russian_time_of_day = time_of_day_dict[time_of_day]["text"]
+                emoji = time_of_day_dict[time_of_day]["emoji"]
+
+                message_text = f"{russian_time_of_day}{emoji} предсказание температуры: {temp}°C предсказание погоды: {weather_text} "
+                bot.send_message(chat_id, message_text)
+                temp_v.append(round(temp))
+                weat_v.append(int(weath))
+        else:
+            time_of_day_index = ["Morning", "Day", "Evening", "Night"].index(time_of_day)
+            temp_model = joblib.load(temp_values[time_of_day_index])
             temp = temp_model.predict(date)[0]
 
-            weath_model = joblib.load(weath_values[i])
+            weath_model = joblib.load(weath_values[time_of_day_index])
             weath = weath_model.predict(date)[0]
             weather_text = convert_weather(weath)
-            #print(f"{time_of_day} temperature prediction: {temp}°C weather prediction: {weather_text} ")
+
             russian_time_of_day = time_of_day_dict[time_of_day]["text"]
             emoji = time_of_day_dict[time_of_day]["emoji"]
             message_text = f"{russian_time_of_day}{emoji} предсказание температуры: {temp}°C предсказание погоды: {weather_text} "
-            #bot.send_message(chat_id, message_text)
-            temp_v.append(int(temp))
-            weat_v.append(int(weath))
+            bot.send_message(chat_id, message_text)
+            temp_v = (round(temp))
+            weat_v = (int(weath))
     return temp_v, weat_v
 
 
